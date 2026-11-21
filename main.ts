@@ -1,6 +1,9 @@
 import { mkdirSync, cpSync, readdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildDossier, DossierError } from './vendor/makefun-game.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const SCREENSHOT_MAX_BYTES = 262_144;
 const SCREENSHOT_MIN_COUNT = 3;
@@ -58,8 +61,8 @@ async function main(): Promise<void> {
 
   mkdirSync(out, { recursive: true });
 
-  copyTree('./game', join(out, 'game'));
-  copyTree('./screenshots', join(out, 'screenshots'));
+  copyTree(join(__dirname, 'game'), join(out, 'game'));
+  copyTree(join(__dirname, 'screenshots'), join(out, 'screenshots'));
 
   verifyIndexHtml(join(out, 'game'));
   const ss = verifyScreenshots(join(out, 'screenshots'));
