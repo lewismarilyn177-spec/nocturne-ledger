@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nocturne Ledger</title>
+<style>
+  html,body{margin:0;padding:0;background:#07090f;color:#cfd6e4;font-family:'Courier New',monospace;overflow:hidden}
+  #wrap{position:relative;width:100vw;height:100vh}
+  canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+  #ui{position:absolute;inset:0;pointer-events:none}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,6,12,.92);pointer-events:auto;text-align:center}
+  .hidden{display:none}
+  h1{font-size:44px;letter-spacing:6px;color:#8fd3ff;margin:0 0 8px}
+  h2{font-size:24px;color:#f0c96b;margin:4px 0 14px}
+  p{max-width:560px;line-height:1.6;font-size:14px;color:#9aa7bd}
+  .key{display:inline-block;border:1px solid #4a5568;border-radius:4px;padding:1px 7px;margin:0 2px;color:#e2e8f0;background:#1a2130}
+  button{pointer-events:auto;margin-top:18px;padding:10px 26px;font-size:16px;font-family:inherit;background:#16283f;color:#8fd3ff;border:1px solid #3c6ca8;border-radius:6px;cursor:pointer}
+  button:hover{background:#1f3a5c}
+  .stats{font-size:15px;color:#cfd6e4;line-height:1.9}
+</style>
+</head>
+<body>
+<script>window.onerror=function(m,s,l){var d=document.createElement("div");d.id="errbox";d.textContent="ERR:"+m+" @"+s+":"+l;document.body.appendChild(d);};</script>
+<div id="wrap">
+  <canvas id="game" width="960" height="600"></canvas>
+  <div id="ui">
+    <div id="startScreen" class="screen">
+      <h1>NOCTURNE LEDGER</h1>
+      <h2>a stealth affair in three acts</h2>
+      <p>You are <b>Wren</b>, a night courier retrieving sealed ledgers from the Vaultine guildhalls.
+      Cross each floor unseen: slip through shadow, hug cover, and vanish past the sentries.
+      Guards see light cones, hear running and thrown lures.</p>
+      <p>
+        <span class="key">W A S D</span> move &nbsp; <span class="key">Shift</span> sneak (crouch, quiet)
+        &nbsp; <span class="key">Space</span> sprint (loud) &nbsp; <span class="key">E</span> interact
+        &nbsp; <span class="key">G</span> throw lure toward mouse &nbsp; <span class="key">P</span> pause
+      </p>
+      <p>Steal the <b>ledger</b>, then reach the glowing <b>exit hatch</b>. Stay out of the light.</p>
+      <button id="startBtn">BEGIN THE NIGHT</button>
+    </div>
+    <div id="endScreen" class="screen hidden">
+      <h1 id="endTitle">FLOOR CLEARED</h1>
+      <h2 id="endSub"></h2>
+      <div id="endStats" class="stats"></div>
+      <button id="endBtn">CONTINUE</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
