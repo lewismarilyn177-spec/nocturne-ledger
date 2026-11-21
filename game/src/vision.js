@@ -1,28 +1,71 @@
-// Vision + light: cone hit-tests against walls, and the lamp-light factor that
-// decides whether the player is actually visible to a sentry.
-import { GUARD } from './config.js';
-import { lineBlocked } from './world.js';
+import { CONFIG } from './config.js';
+
+const { vision, light } = CONFIG.guard;
+
 export function angleDiff(a, b) {
-  let d = (a - b) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
-  return Math.abs(d);
+  let diff = a - b;
+  while (diff <= -Math.PI) diff += 2 * Math.PI;
+  while (diff > Math.PI) diff -= 2 * Math.PI;
+  return diff;
 }
-export function coneSees(world, gx, gy, facing, px, py) {
-  const dx = px - gx, dy = py - gy, dist = Math.hypot(dx, dy);
-  if (dist > GUARD.range) return 0;
-  if (angleDiff(Math.atan2(dy, dx), facing) > (GUARD.fov * Math.PI / 180) / 2) return 0;
-  if (lineBlocked(world, gx, gy, px, py)) return 0;
-  return Math.max(0.15, 1 - dist / GUARD.range);
-}
-// 0 = deep shadow, 1 = standing in a lamp pool. Crouching in shadow hides Wren.
-export function shadowFactor(world, player, time) {
-  let lit = 0;
-  for (const lamp of world.lamps) {
-    const d = Math.hypot(lamp.x - player.x, lamp.y - player.y);
-    const flick = 1 + Math.sin(time * 0.006 + lamp.x) * 0.12;
-    const r = 150 * flick;
-    if (d < r) lit = Math.max(lit, 1 - d / r);
+
+export function inVisionCone(guardX, guardY, guardAngle, targetX, targetY, lightFactor) {
+  const dx = targetX - guardX;
+  const dy = targetY - guardY;
+  const dist = Math.hypot(dx, dy);
+
+  const effectiveRange = vision.range * (lightFactor < 0.5 ? light.shadowRangeFactor : 1);
+  if (dist > effectiveRange) return { inCone: false, dist, factor: 0 };
+
+  const angleToTarget = Math.atan2(dy, dx);
+  const diff = Math.abs(angleDiff(angleToTarget, guardAngle));
+  if (diff > vision.halfAngle) return { inCone: false, dist, factor: 0 };
+
+  const angleFactor = 1 - diff / vision.halfAngle;
+  const distFactor = 1 - dist / effectiveRange;
+  let factor = angleFactor * distFactor;
+
+  if (lightFactor < 0.5) {
+    factor *= light.shadowDetectionFactor;
   }
-  return Math.min(1, lit);
+
+  return { inCone: true, dist, factor: Math.max(0, Math.min(1, factor)) };
+}
+
+export function getVisionConePoints(guardX, guardY, guardAngle, lightFactor) {
+  const effectiveRange = vision.range * (lightFactor < 0.5 ? light.shadowRangeFactor : 1);
+  const halfAngle = vision.halfAngle;
+  const segments = 16;
+  const points = [];
+
+  points.push({ x: guardX, y: guardY });
+
+  for (let i = 0; i <= segments; i++) {
+    const angle = guardAngle - halfAngle + (halfAngle * 2 * i / segments);
+    points.push({
+      x: guardX + Math.cos(angle) * effectiveRange,
+      y: guardY + Math.sin(angle) * effectiveRange,
+    });
+  }
+
+  return points;
+}
+
+export function calculateAlertChange(guard, player, world, dt) {
+  const lightFactor = world.getLightFactor(player.x, player.y);
+  const visionResult = inVisionCone(guard.x, guard.y, guard.angle, player.x, player.y, lightFactor);
+
+  if (!visionResult.inCone) {
+    return -CONFIG.guard.alert.decayRate * dt;
+  }
+
+  const riseRate = lightFactor > 0.5 ? CONFIG.guard.alert.riseRateLit : CONFIG.guard.alert.riseRateDim;
+  return visionResult.factor * riseRate * dt;
+}
+
+export function canHearNoise(guardX, guardY, noiseX, noiseY, noiseRadius) {
+  const dx = noiseX - guardX;
+  const dy = noiseY - guardY;
+  const dist = Math.hypot(dx, dy);
+  return dist <= noiseRadius + CONFIG.guard.hearingRadius;
 }

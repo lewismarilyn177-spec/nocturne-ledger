@@ -1,16 +1,60 @@
-// Tunable constants for Nocturne Ledger.
-export const TILE = 40;
-export const VIEW_W = 960, VIEW_H = 600;
-export const COLORS = {
-  floorDark: '#0c1018', floorLit: '#26314a', wall: '#3a4666', wallTop: '#4c5c85',
-  shadow: 'rgba(2,4,9,0.82)', coneFill: 'rgba(255,196,80,0.16)', coneEdge: 'rgba(255,196,80,0.55)',
-  player: '#8fd3ff', playerCrouch: '#6fa7c9', guard: '#e26d5a', guardAlert: '#ff5238', guardSusp: '#f0c96b',
-  lure: '#c9f7a0', ledger: '#f4d35e', exit: '#63e6a0', ink: '#060810',
+export const CONFIG = {
+  canvas: { width: 960, height: 600 },
+  tile: { size: 30, cols: 32, rows: 20 },
+  player: {
+    radius: 8,
+    speed: { walk: 120, sneak: 60, sprint: 200 },
+    sprintNoiseInterval: 0.35,
+    sprintNoiseRadius: 180,
+    lureThrowSpeed: 300,
+    maxLures: 3,
+  },
+  guard: {
+    radius: 10,
+    speed: { walk: 80, chase: 160, search: 100 },
+    vision: { range: 210, halfAngle: 32 * Math.PI / 180 },
+    alert: { riseRateLit: 1.2, riseRateDim: 0.35, decayRate: 0.18, suspiciousThreshold: 0.3, chaseThreshold: 0.7 },
+    hearingRadius: 200,
+    searchTime: 4.0,
+    patrolPause: 1.2,
+    searchPause: 1.5,
+  },
+  light: {
+    lampRadius: 180,
+    lampIntensity: 1.0,
+    falloffExponent: 2.2,
+    shadowRangeFactor: 0.45,
+    shadowDetectionFactor: 0.4,
+    losSamples: 8,
+  },
+  colors: {
+    floor: '#101623',
+    grid: '#161e2e',
+    wall: '#2b3446',
+    wallTop: '#3d4a63',
+    player: '#8fd3ff',
+    guard: '#c8443a',
+    lampLight: '#f0c96b',
+    exit: '#4fd18b',
+    ledger: '#f0c96b',
+    alert: '#ff8800',
+    visionCone: 'rgba(200, 68, 58, 0.12)',
+    cover: '#1e2838',
+    coverTop: '#2a3648',
+  },
+  audio: {
+    masterVolume: 0.35,
+    droneFreq: 55,
+    footstepFreq: 180,
+    alertChirpFreq: 880,
+    lureThudFreq: 120,
+    pickupChimeFreq: 660,
+    caughtBuzzFreq: 110,
+  },
+  hud: {
+    toastDuration: 3.5,
+  },
+  screenshot: {
+    settleFrames: 120,
+  },
 };
-export const PLAYER = { walk: 118, sprint: 186, sneak: 62, radius: 9 };
-export const GUARD = { patrol: 62, chase: 132, search: 84, fov: 78, range: 235, radius: 10, spotMs: 620, searchMs: 4200 };
-export const NOISE = { sprint: 240, walk: 96, sneak: 26, lure: 300, door: 140 };
-export const HEARING = { base: 190, sneakMul: 0.35 };
-export const LIGHT = { lampRadius: 150, lampFlicker: 12 };
-export const LEVEL_COUNT = 3;
-export const SHOT_FRAME_MS = 420;

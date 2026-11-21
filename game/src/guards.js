@@ -1,69 +1,246 @@
-// Sentry behaviour: patrol waypoints, hearing, suspicion, chase and search.
-import { GUARD, TILE } from './config.js';
-import { coneSees } from './vision.js';
-import { lineBlocked } from './world.js';
-export function makeGuards(world, levelDef) {
-  const list = [];
-  const routes = levelDef.guardPaths;
-  for (const route of routes) {
-    const first = route[0];
-    list.push({
-      x: first[0] * TILE + TILE / 2, y: first[1] * TILE + TILE / 2, facing: 0,
-      route: route.map(([tx, ty]) => ({ x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 })),
-      wp: 1, state: 'patrol', alert: 0, timer: 0, suspect: null, caught: false,
-    });
+import { CONFIG } from './config.js';
+import { inVisionCone, getVisionConePoints, calculateAlertChange, canHearNoise } from './vision.js';
+import { globalRandom } from './random.js';
+
+const { guard } = CONFIG;
+const { speed, vision, alert, hearingRadius, searchTime, patrolPause, searchPause } = guard;
+
+export class Guard {
+  constructor(x, y, waypoints, id) {
+    this.id = id;
+    this.x = x;
+    this.y = y;
+    this.radius = guard.radius;
+    this.waypoints = waypoints;
+    this.waypointIndex = 0;
+    this.state = 'patrol';
+    this.angle = 0;
+    this.targetX = x;
+    this.targetY = y;
+    this.alert = 0;
+    this.lastKnownPlayerX = null;
+    this.lastKnownPlayerY = null;
+    this.searchTimer = 0;
+    this.searchPauseTimer = 0;
+    this.patrolPauseTimer = 0;
+    this.lastNoiseX = null;
+    this.lastNoiseY = null;
+    this.noiseTimer = 0;
+    this.suspicionTarget = null;
   }
-  return list;
-}
-export function updateGuards(world, guards, dt, player, noises, time) {
-  for (const g of guards) {
-    let visibility = coneSees(world, g.x, g.y, g.facing, player.x, player.y);
-    if (player.crouch) visibility *= 0.35;
-    if (player.shadowed > 0.45) visibility *= 0.25;
-    let heardNoise = null;
-    for (const n of noises) {
-      const d = Math.hypot(n.x - g.x, n.y - g.y);
-      if (d < n.radius && !lineBlocked(world, g.x, g.y, n.x, n.y)) heardNoise = n;
+
+  update(dt, player, world, noiseEvents) {
+    this.processNoise(noiseEvents);
+    this.updateAlert(player, world, dt);
+    this.updateStateMachine(dt, player, world);
+    this.move(dt, world);
+    this.updateAngle();
+  }
+
+  processNoise(noiseEvents) {
+    for (const noise of noiseEvents) {
+      if (canHearNoise(this.x, this.y, noise.x, noise.y, noise.radius)) {
+        this.lastNoiseX = noise.x;
+        this.lastNoiseY = noise.y;
+        this.noiseTimer = 2.0;
+        if (this.state === 'patrol') {
+          this.state = 'suspicious';
+          this.suspicionTarget = { x: noise.x, y: noise.y };
+        }
+      }
     }
-    if (visibility > 0.22) {
-      g.alert += dt / (GUARD.spotMs * (player.crouch ? 2 : 1));
-      g.suspect = { x: player.x, y: player.y };
-    } else {
-      g.alert -= dt * 0.45;
-      if (heardNoise) { g.alert = Math.max(g.alert, 0.6); g.suspect = { x: heardNoise.x, y: heardNoise.y }; }
+    if (this.noiseTimer > 0) {
+      this.noiseTimer -= 1/60;
     }
-    g.alert = Math.max(0, Math.min(1.2, g.alert));
-    if (g.alert >= 1) { g.state = 'chase'; g.timer = GUARD.searchMs; }
-    else if (g.state === 'chase') { g.timer -= dt; if (g.timer <= 0) { g.state = 'search'; g.timer = GUARD.searchMs; } }
-    else if (g.state === 'search') { g.timer -= dt; if (g.timer <= 0) { g.state = 'patrol'; g.suspect = null; } }
-    else if (g.alert > 0.3) g.state = 'suspicious';
-    else if (g.state === 'suspicious') { g.state = 'patrol'; g.suspect = null; }
-    moveGuard(world, g, dt, player);
+  }
+
+  updateAlert(player, world, dt) {
+    const alertChange = calculateAlertChange(this, player, world, dt);
+    this.alert = Math.max(0, Math.min(1, this.alert + alertChange));
+  }
+
+  updateStateMachine(dt, player, world) {
+    const lightFactor = world.getLightFactor(player.x, player.y);
+    const visionResult = inVisionCone(this.x, this.y, this.angle, player.x, player.y, lightFactor);
+    const canSeePlayer = visionResult.inCone;
+
+    switch (this.state) {
+      case 'patrol':
+        if (canSeePlayer) {
+          this.state = 'suspicious';
+          this.lastKnownPlayerX = player.x;
+          this.lastKnownPlayerY = player.y;
+        } else if (this.noiseTimer > 0) {
+          this.state = 'suspicious';
+          this.suspicionTarget = { x: this.lastNoiseX, y: this.lastNoiseY };
+        }
+        break;
+
+      case 'suspicious':
+        if (canSeePlayer) {
+          this.alert = Math.max(this.alert, alert.chaseThreshold);
+          this.state = 'chase';
+          this.lastKnownPlayerX = player.x;
+          this.lastKnownPlayerY = player.y;
+        } else if (this.alert >= alert.suspiciousThreshold) {
+          this.state = 'search';
+          this.searchTimer = searchTime;
+          this.searchPauseTimer = 0;
+        } else if (this.noiseTimer <= 0 && !this.suspicionTarget) {
+          this.state = 'patrol';
+        }
+        break;
+
+      case 'chase':
+        if (canSeePlayer) {
+          this.lastKnownPlayerX = player.x;
+          this.lastKnownPlayerY = player.y;
+        } else {
+          this.state = 'search';
+          this.searchTimer = searchTime;
+          this.searchPauseTimer = 0;
+        }
+        break;
+
+      case 'search':
+        this.searchTimer -= dt;
+        if (this.searchTimer <= 0) {
+          if (this.searchPauseTimer <= 0) {
+            this.searchPauseTimer = searchPause;
+          }
+          this.searchPauseTimer -= dt;
+          if (this.searchPauseTimer <= 0) {
+            this.state = 'patrol';
+            this.lastKnownPlayerX = null;
+            this.lastKnownPlayerY = null;
+          }
+        }
+        break;
+    }
+  }
+
+  move(dt, world) {
+    let targetSpeed = speed.walk;
+    let moveX = 0, moveY = 0;
+
+    switch (this.state) {
+      case 'patrol':
+        this.movePatrol(dt, world);
+        return;
+
+      case 'suspicious':
+        targetSpeed = speed.walk;
+        if (this.suspicionTarget) {
+          moveX = this.suspicionTarget.x - this.x;
+          moveY = this.suspicionTarget.y - this.y;
+        }
+        break;
+
+      case 'chase':
+        targetSpeed = speed.chase;
+        if (this.lastKnownPlayerX !== null) {
+          moveX = this.lastKnownPlayerX - this.x;
+          moveY = this.lastKnownPlayerY - this.y;
+        }
+        break;
+
+      case 'search':
+        targetSpeed = speed.search;
+        if (this.lastKnownPlayerX !== null) {
+          moveX = this.lastKnownPlayerX - this.x;
+          moveY = this.lastKnownPlayerY - this.y;
+        }
+        break;
+    }
+
+    if (moveX !== 0 || moveY !== 0) {
+      const dist = Math.hypot(moveX, moveY);
+      if (dist > 1) {
+        moveX = (moveX / dist) * targetSpeed * dt;
+        moveY = (moveY / dist) * targetSpeed * dt;
+        const result = world.resolveCollision(this.x, this.y, this.radius, moveX, moveY);
+        this.x = result.x;
+        this.y = result.y;
+      } else if (this.state === 'suspicious') {
+        this.suspicionTarget = null;
+      }
+    }
+  }
+
+  movePatrol(dt, world) {
+    if (this.waypoints.length === 0) return;
+
+    const target = this.waypoints[this.waypointIndex];
+    const targetPx = target.x * CONFIG.tile.size + CONFIG.tile.size / 2;
+    const targetPy = target.y * CONFIG.tile.size + CONFIG.tile.size / 2;
+
+    const dx = targetPx - this.x;
+    const dy = targetPy - this.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 5) {
+      this.patrolPauseTimer -= dt;
+      if (this.patrolPauseTimer <= 0) {
+        this.waypointIndex = (this.waypointIndex + 1) % this.waypoints.length;
+        this.patrolPauseTimer = patrolPause;
+      }
+      return;
+    }
+
+    const moveX = (dx / dist) * speed.walk * dt;
+    const moveY = (dy / dist) * speed.walk * dt;
+    const result = world.resolveCollision(this.x, this.y, this.radius, moveX, moveY);
+    this.x = result.x;
+    this.y = result.y;
+  }
+
+  updateAngle() {
+    let targetAngle = this.angle;
+
+    switch (this.state) {
+      case 'patrol':
+        if (this.waypoints.length > 0) {
+          const target = this.waypoints[this.waypointIndex];
+          const targetPx = target.x * CONFIG.tile.size + CONFIG.tile.size / 2;
+          const targetPy = target.y * CONFIG.tile.size + CONFIG.tile.size / 2;
+          targetAngle = Math.atan2(targetPy - this.y, targetPx - this.x);
+        }
+        break;
+      case 'suspicious':
+        if (this.suspicionTarget) {
+          targetAngle = Math.atan2(this.suspicionTarget.y - this.y, this.suspicionTarget.x - this.x);
+        } else if (this.lastNoiseX !== null) {
+          targetAngle = Math.atan2(this.lastNoiseY - this.y, this.lastNoiseX - this.x);
+        }
+        break;
+      case 'chase':
+      case 'search':
+        if (this.lastKnownPlayerX !== null) {
+          targetAngle = Math.atan2(this.lastKnownPlayerY - this.y, this.lastKnownPlayerX - this.x);
+        }
+        break;
+    }
+
+    let diff = targetAngle - this.angle;
+    while (diff <= -Math.PI) diff += 2 * Math.PI;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    this.angle += diff * 0.15;
+  }
+
+  getVisionConePoints(lightFactor) {
+    return getVisionConePoints(this.x, this.y, this.angle, lightFactor);
+  }
+
+  isPlayerDetected() {
+    return this.state === 'chase' && this.alert >= alert.chaseThreshold;
   }
 }
-function moveGuard(world, g, dt, player) {
-  let goal, speed;
-  if (g.state === 'chase') { goal = player; speed = GUARD.chase; }
-  else if (g.state === 'search' || g.state === 'suspicious') { goal = g.suspect ?? g.route[0]; speed = GUARD.search; }
-  else {
-    goal = g.route[g.wp % g.route.length];
-    speed = GUARD.patrol;
-    if (Math.hypot(g.x - goal.x, g.y - goal.y) < 12) g.wp++;
-  }
-  const dx = goal.x - g.x, dy = goal.y - g.y, d = Math.hypot(dx, dy);
-  if (d > 6) {
-    const step = speed * dt;
-    const nx = g.x + (dx / d) * step, ny = g.y + (dy / d) * step;
-    if (!wallAt(world, nx, g.y)) g.x = nx;
-    if (!wallAt(world, g.x, ny)) g.y = ny;
-    g.facing = Math.atan2(dy, dx);
-    if (g.state === 'chase' && Math.hypot(player.x - g.x, player.y - g.y) < 20) g.caught = true;
-  } else if (g.state !== 'chase') g.facing += dt * 1.2;
+
+export function createGuards(levelData) {
+  return levelData.guards.map((g, i) => new Guard(
+    g.x * CONFIG.tile.size + CONFIG.tile.size / 2,
+    g.y * CONFIG.tile.size + CONFIG.tile.size / 2,
+    g.waypoints,
+    i
+  ));
 }
-function wallAt(world, x, y) {
-  for (const [ox, oy] of [[TILE * 0.3, 0], [-TILE * 0.3, 0], [0, TILE * 0.3], [0, -TILE * 0.3]]) {
-    if (isWallAt(world, x + ox, y + oy)) return true;
-  }
-  return false;
-}
-import { isWall as isWallAt } from './world.js';

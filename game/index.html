@@ -1,51 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Nocturne Ledger</title>
-<style>
-  html,body{margin:0;padding:0;background:#07090f;color:#cfd6e4;font-family:'Courier New',monospace;overflow:hidden}
-  #wrap{position:relative;width:100vw;height:100vh}
-  canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
-  #ui{position:absolute;inset:0;pointer-events:none}
-  .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,6,12,.92);pointer-events:auto;text-align:center}
-  .hidden{display:none}
-  h1{font-size:44px;letter-spacing:6px;color:#8fd3ff;margin:0 0 8px}
-  h2{font-size:24px;color:#f0c96b;margin:4px 0 14px}
-  p{max-width:560px;line-height:1.6;font-size:14px;color:#9aa7bd}
-  .key{display:inline-block;border:1px solid #4a5568;border-radius:4px;padding:1px 7px;margin:0 2px;color:#e2e8f0;background:#1a2130}
-  button{pointer-events:auto;margin-top:18px;padding:10px 26px;font-size:16px;font-family:inherit;background:#16283f;color:#8fd3ff;border:1px solid #3c6ca8;border-radius:6px;cursor:pointer}
-  button:hover{background:#1f3a5c}
-  .stats{font-size:15px;color:#cfd6e4;line-height:1.9}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOCTURNE LEDGER</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', Courier, monospace; background: #0a0c12; color: #8fd3ff; overflow: hidden; }
+    #game-container { position: relative; width: 960px; height: 600px; margin: 0 auto; }
+    canvas { display: block; background: #101623; }
+    .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(16, 22, 35, 0.98); z-index: 10; }
+    .screen.hidden { display: none; }
+    h1 { font-size: 48px; letter-spacing: 8px; margin-bottom: 8px; color: #f0c96b; text-shadow: 0 0 20px rgba(240, 201, 107, 0.5); }
+    .subtitle { font-size: 14px; letter-spacing: 4px; color: #6a7a9a; margin-bottom: 32px; }
+    .controls { text-align: left; max-width: 400px; margin-bottom: 32px; line-height: 28px; color: #8fd3ff; font-size: 13px; }
+    .controls span { color: #f0c96b; }
+    button { background: transparent; border: 2px solid #8fd3ff; color: #8fd3ff; padding: 14px 48px; font-family: inherit; font-size: 16px; letter-spacing: 2px; cursor: pointer; transition: all 0.2s; }
+    button:hover { background: #8fd3ff; color: #101623; box-shadow: 0 0 20px rgba(143, 211, 255, 0.4); }
+    button:focus { outline: none; box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.5); }
+    .hud { position: absolute; top: 12px; left: 12px; z-index: 5; font-size: 12px; line-height: 20px; color: #8fd3ff; pointer-events: none; }
+    .hud .bar { width: 160px; height: 6px; background: #161e2e; border: 1px solid #2b3446; margin-top: 4px; overflow: hidden; }
+    .hud .bar > div { height: 100%; transition: width 0.1s; }
+    .hud .sound-bar > div { background: #c8443a; }
+    .hud .light-bar > div { background: #f0c96b; }
+    .toast { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(16, 22, 35, 0.95); border: 1px solid #3d4a63; padding: 16px 32px; font-size: 14px; letter-spacing: 1px; color: #f0c96b; z-index: 5; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
+    .toast.visible { opacity: 1; }
+    .stats { margin-top: 24px; text-align: center; line-height: 28px; color: #8fd3ff; }
+    .stats .value { color: #f0c96b; }
+  </style>
 </head>
 <body>
-<script>window.onerror=function(m,s,l){var d=document.createElement("div");d.id="errbox";d.textContent="ERR:"+m+" @"+s+":"+l;document.body.appendChild(d);};</script>
-<div id="wrap">
-  <canvas id="game" width="960" height="600"></canvas>
-  <div id="ui">
-    <div id="startScreen" class="screen">
+  <div id="game-container">
+    <canvas id="canvas" width="960" height="600"></canvas>
+    <div id="start-screen" class="screen">
       <h1>NOCTURNE LEDGER</h1>
-      <h2>a stealth affair in three acts</h2>
-      <p>You are <b>Wren</b>, a night courier retrieving sealed ledgers from the Vaultine guildhalls.
-      Cross each floor unseen: slip through shadow, hug cover, and vanish past the sentries.
-      Guards see light cones, hear running and thrown lures.</p>
-      <p>
-        <span class="key">W A S D</span> move &nbsp; <span class="key">Shift</span> sneak (crouch, quiet)
-        &nbsp; <span class="key">Space</span> sprint (loud) &nbsp; <span class="key">E</span> interact
-        &nbsp; <span class="key">G</span> throw lure toward mouse &nbsp; <span class="key">P</span> pause
-      </p>
-      <p>Steal the <b>ledger</b>, then reach the glowing <b>exit hatch</b>. Stay out of the light.</p>
-      <button id="startBtn">BEGIN THE NIGHT</button>
+      <div class="subtitle">A top-down stealth heist in the dark</div>
+      <div class="controls">
+        <div><span>WASD</span> / <span>Arrows</span> — Move</div>
+        <div><span>Shift</span> — Sneak (slow, silent)</div>
+        <div><span>Space</span> — Sprint (fast, loud)</div>
+        <div><span>E</span> — Pick up ledger / Use exit</div>
+        <div><span>G</span> — Throw lure (toward mouse)</div>
+        <div><span>P</span> / <span>Esc</span> — Pause</div>
+      </div>
+      <button id="begin-btn">BEGIN THE NIGHT</button>
     </div>
-    <div id="endScreen" class="screen hidden">
-      <h1 id="endTitle">FLOOR CLEARED</h1>
-      <h2 id="endSub"></h2>
-      <div id="endStats" class="stats"></div>
-      <button id="endBtn">CONTINUE</button>
+    <div id="pause-screen" class="screen hidden">
+      <h1>PAUSED</h1>
+      <button id="resume-btn">RESUME</button>
+      <button id="quit-btn" style="margin-top: 16px;">QUIT TO MENU</button>
+    </div>
+    <div id="caught-screen" class="screen hidden">
+      <h1 style="color: #c8443a;">CAUGHT</h1>
+      <div class="subtitle">The ledger is lost...</div>
+      <button id="retry-btn">RETRY</button>
+    </div>
+    <div id="complete-screen" class="screen hidden">
+      <h1>FLOOR CLEARED</h1>
+      <div class="subtitle">The ledger is secured</div>
+      <div class="stats" id="complete-stats"></div>
+      <button id="continue-btn" style="margin-top: 24px;">CONTINUE</button>
+    </div>
+    <div id="toast" class="toast"></div>
+    <div class="hud" id="hud">
+      <div id="hud-floor">FLOOR 1/3 — THE COUNTING ROOM</div>
+      <div>SOUND <div class="bar sound-bar"><div id="hud-sound" style="width: 0%"></div></div></div>
+      <div>LIGHT <div class="bar light-bar"><div id="hud-light" style="width: 0%"></div></div></div>
+      <div id="hud-lures">LURES: 3</div>
+      <div id="hud-objective">FIND THE LEDGER</div>
     </div>
   </div>
-</div>
-<script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
